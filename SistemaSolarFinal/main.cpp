@@ -1,5 +1,9 @@
 /*  Enrique Julca Delgado - Proyecto Sistema Solar
     Descripción:    Todas estará definido en el propio main.cpp para evitar complicaciones a la hora de la revisión
+
+    Una vez esté en Visual Studio (VS) se recomienda ponerlo en modo Release x86
+    En caso de no entender las instrucciones revisar el PDF que le mandé
+    Por si acaso he dejado una demo (VIDEO) de cómo se ve el Sistema Solar.
 */
 
 // NOTA: Este proyecto se compila y ejecuta desde Visual Studio.
@@ -15,9 +19,13 @@
 #include <cstdio>
 #include <algorithm>
 #include <iostream>
+#include <cstdlib>
+#include <ctime>
 
 #include <vector>
 #include <string>
+#include <deque>
+#include <utility>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -68,15 +76,38 @@ struct Planeta {
     GLuint textura;
     float angulo;
     float rotacionPropia;
+    int numLunas;
     std::vector<Satelite> satelites;
+    std::deque<std::pair<float,float>> estela;
+};
+
+struct Asteroide {
+    float distancia;
+    float angulo;
+    float velocidad;
+    float tamano;
+};
+
+struct SolarFlare {
+    float angle;
+    float length;
+    float life;
 };
 
 
 std::vector<Planeta> planetas;
+std::vector<Asteroide> asteroides;
+std::vector<SolarFlare> flares;
 
 Satelite luna = { 2.0f, 0.3f, 0.5f, 0.0f, 0 };         // Tierra
 Satelite fobos = { 1.2f, 0.2f, 0.8f, 0.0f, 0 };        // Marte
 Satelite deimos = { 2.0f, 0.15f, 0.5f, 0.0f, 0 };      // Marte
+Satelite mercurioMoon = { 1.1f, 0.1f, 0.8f, 0.0f, 0 }; // Mercurio
+Satelite venusMoon    = { 1.4f, 0.1f, 0.6f, 0.0f, 0 }; // Venus
+Satelite jupiterMoon  = { 6.0f, 0.4f, 0.3f, 0.0f, 0 }; // Jupiter
+Satelite saturnoMoon  = { 5.5f, 0.4f, 0.25f, 0.0f, 0 }; // Saturno
+Satelite uranoMoon    = { 4.0f, 0.3f, 0.2f, 0.0f, 0 }; // Urano
+Satelite neptunoMoon  = { 3.5f, 0.3f, 0.2f, 0.0f, 0 }; // Neptuno
 
 
 
@@ -167,8 +198,8 @@ void moverCamara(int) {
     if (GetAsyncKeyState('D') & 0x8000) { camX -= rightX * moveSpeed; camZ -= rightZ * moveSpeed; }
 
     
-    if (GetAsyncKeyState(VK_SPACE) & 0x8000) { camY += 0.3f; }  // Subir
-    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) { camY -= 0.3f; }  // Bajar
+    if (GetAsyncKeyState(VK_SPACE) & 0x8000) { camY += 0.3f; }
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) { camY -= 0.3f; }
 
     updateCenter();
     glutPostRedisplay();
@@ -218,6 +249,7 @@ void dibujarAnillosSaturnoAvanzado() {
         }
     }
     glEnable(GL_DEPTH_TEST);
+
     glDisable(GL_BLEND);
     glEnable(GL_TEXTURE_2D);
     glEnable(GL_LIGHTING);
@@ -238,7 +270,7 @@ void dibujarAnillosUranoAvanzado() {
         float r2 = r1 + 0.3f;
         float alpha = 1.0f - t * 0.35f;
 
-        glColor4f(0.6f, 0.85f, 1.0f, alpha);  // azul tenue
+        glColor4f(0.6f, 0.85f, 1.0f, alpha);
         glBegin(GL_TRIANGLE_STRIP);
         for (float ang = 0; ang <= 360; ang += 2.0f) {
             float rad = ang * M_PI / 180.0f;
@@ -248,7 +280,6 @@ void dibujarAnillosUranoAvanzado() {
         glEnd();
     }
 
-    // Glow externo
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     glDisable(GL_DEPTH_TEST);
     for (float r = 4.0f, alpha = 0.08f; r <= 4.5f; r += 0.3f, alpha -= 0.008f) {
@@ -319,6 +350,12 @@ void display() {
     glEnable(GL_LIGHT0);
     GLfloat light_pos[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
+    GLfloat light_ambient[]  = { 0.3f, 0.3f, 0.3f, 1.0f };
+    GLfloat light_diffuse[]  = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat light_specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_AMBIENT,  light_ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE,  light_diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
 
     glEnable(GL_TEXTURE_2D);
     glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
@@ -345,6 +382,26 @@ void display() {
 
     // ---------- PLANETAS Y SATÉLITES ----------
     for (Planeta& p : planetas) {
+        // Dibuja la órbita completa
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_LIGHTING);
+        glColor4f(0.7f, 0.7f, 0.7f, 0.4f);
+        glBegin(GL_LINE_LOOP);
+        for (int ang = 0; ang < 360; ang += 2) {
+            float rad = ang * M_PI / 180.0f;
+            glVertex3f(cos(rad) * p.distancia, 0.0f, sin(rad) * p.distancia);
+        }
+        glEnd();
+
+        // Estela que deja el planeta al moverse
+        glColor4f(1.0f, 1.0f, 1.0f, 0.6f);
+        glBegin(GL_LINE_STRIP);
+        for (const auto& pos : p.estela) {
+            glVertex3f(pos.first, 0.0f, pos.second);
+        }
+        glEnd();
+        glEnable(GL_LIGHTING);
+        glEnable(GL_TEXTURE_2D);
         glPushMatrix();
         glRotatef(p.angulo, 0, 1, 0);
         glTranslatef(p.distancia, 0, 0);
@@ -372,7 +429,7 @@ void display() {
 
         if (p.nombre == "Urano") {
             glPushMatrix();
-            glRotatef(90, 0, 0, 1);             // Giro vertical
+            glRotatef(90, 0, 0, 1);             // Vertical
             glDisable(GL_CULL_FACE);           // Visible desde atrás
             dibujarAnillosUranoAvanzado();     // Llama la nueva función
             glEnable(GL_CULL_FACE);
@@ -396,6 +453,20 @@ void display() {
 
         glPopMatrix();
     }
+
+    // --- ASTEROIDES ---
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_LIGHTING);
+    glColor3f(0.6f, 0.6f, 0.6f);
+    for (const Asteroide& a : asteroides) {
+        glPushMatrix();
+        glRotatef(a.angulo, 0, 1, 0);
+        glTranslatef(a.distancia, 0, 0);
+        glutSolidSphere(a.tamano, 8, 8);
+        glPopMatrix();
+    }
+    glEnable(GL_LIGHTING);
+    glEnable(GL_TEXTURE_2D);
 
     // ---------- HUD ----------
     glMatrixMode(GL_PROJECTION);
@@ -455,6 +526,10 @@ void idle() {
         p.angulo += p.velocidad;
         if (p.angulo >= 360.0f) p.angulo -= 360.0f;
 
+        float rad = p.angulo * M_PI / 180.0f;
+        p.estela.push_back({ cos(rad) * p.distancia, sin(rad) * p.distancia });
+        if (p.estela.size() > 360) p.estela.pop_front();
+
         p.rotacionPropia += 1.5f;  // velocidad de rotación diaria
         if (p.rotacionPropia >= 360.0f) p.rotacionPropia -= 360.0f;
 
@@ -464,14 +539,18 @@ void idle() {
         }
     }
 
+    for (auto& a : asteroides) {
+        a.angulo += a.velocidad;
+        if (a.angulo >= 360.0f) a.angulo -= 360.0f;
+    }
+
     glutPostRedisplay();
 }
 
 
-// KEYDOWN
 void keyDown(unsigned char key, int x, int y) {
     if (key == 27) { // ESC
-        exit(0);     // Cierra el programa
+        exit(0);     // Cerrar Programa
     }
 }
 
@@ -486,6 +565,11 @@ int main(int argc, char** argv) {
     glutCreateWindow("Sistema Solar FPS - Enrique");
 
     glEnable(GL_DEPTH_TEST);
+    GLfloat globalAmbient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+    srand(static_cast<unsigned int>(time(0)));
 
     texturaSol = LoadBMP("../assets/Sol.bmp");
     texturaTierra = LoadBMP("../assets/PTierra.bmp");
@@ -494,20 +578,37 @@ int main(int argc, char** argv) {
     luna.textura = LoadBMP("../assets/SLuna.bmp");
     fobos.textura = LoadBMP("../assets/SPhobos.bmp");
     deimos.textura = LoadBMP("../assets/SDeimos.bmp");
+    mercurioMoon.textura = luna.textura;
+    venusMoon.textura = luna.textura;
+    jupiterMoon.textura = luna.textura;
+    saturnoMoon.textura = luna.textura;
+    uranoMoon.textura = luna.textura;
+    neptunoMoon.textura = luna.textura;
 
 
-    planetas.push_back({ "Mercurio", 12.0f, 0.7f, 0.45f, LoadBMP("../assets/PMercurio.bmp"), 0.0f, 0.5f });
-    planetas.push_back({ "Venus", 22.4f, 1.2f, 0.25f, LoadBMP("../assets/PVenus.bmp"), 0.0f, 0.3f });
-    planetas.push_back({ "Tierra", 31.0f, 1.2f, 0.3f, texturaTierra, 0.0f, 1.0f });
-    planetas.push_back({ "Marte", 47.2f, 0.9f, 0.35f, LoadBMP("../assets/PMarte.bmp"), 0.0f, 0.8f });
-    planetas.push_back({ "Jupiter", 100.3f, 5.0f, 0.1f, LoadBMP("../assets/PJupiter.bmp"), 0.0f, 1.3f });
-    planetas.push_back({ "Saturno", 150.2f, 4.2f, 0.07f, LoadBMP("../assets/PSaturno.bmp"), 0.0f, 1.0f });
-    planetas.push_back({ "Urano", 260.7f, 2.3f, 0.05f, LoadBMP("../assets/PUrano.bmp"), 0.0f, 0.6f });
-    planetas.push_back({ "Neptuno", 280.0f, 2.2f, 0.04f, LoadBMP("../assets/PNeptuno.bmp"), 0.0f, 0.7f });
-    planetas.push_back({ "Pluton", 290.0f, 0.5f, 0.02f, LoadBMP("../assets/PPluton.bmp"), 0.0f, 0.2f });
+    planetas.push_back({ "Mercurio", 12.0f, 0.7f, 0.45f, LoadBMP("../assets/PMercurio.bmp"), 0.0f, 0.5f, 0 });
+    planetas.push_back({ "Venus", 22.4f, 1.2f, 0.25f, LoadBMP("../assets/PVenus.bmp"), 0.0f, 0.3f, 0 });
+    planetas.push_back({ "Tierra", 31.0f, 1.2f, 0.3f, texturaTierra, 0.0f, 1.0f, 1 });
+    planetas.push_back({ "Marte", 47.2f, 0.9f, 0.35f, LoadBMP("../assets/PMarte.bmp"), 0.0f, 0.8f, 2 });
+    planetas.push_back({ "Jupiter", 100.3f, 5.0f, 0.1f, LoadBMP("../assets/PJupiter.bmp"), 0.0f, 1.3f, 95 });
+    planetas.push_back({ "Saturno", 150.2f, 4.2f, 0.07f, LoadBMP("../assets/PSaturno.bmp"), 0.0f, 1.0f, 8 });
+    planetas.push_back({ "Urano", 260.7f, 2.3f, 0.05f, LoadBMP("../assets/PUrano.bmp"), 0.0f, 0.6f, 27 });
+    planetas.push_back({ "Neptuno", 280.0f, 2.2f, 0.04f, LoadBMP("../assets/PNeptuno.bmp"), 0.0f, 0.7f, 14 });
+    planetas.push_back({ "Pluton", 290.0f, 0.5f, 0.02f, LoadBMP("../assets/PPluton.bmp"), 0.0f, 0.2f, 0 });
+
+    for (auto& p : planetas) {
+        float rad = p.angulo * M_PI / 180.0f;
+        p.estela.push_back({ cos(rad) * p.distancia, sin(rad) * p.distancia });
+    }
 
     // === ASIGNAR SATÉLITES A PLANETAS ===
     for (auto& p : planetas) {
+        if (p.nombre == "Mercurio") {
+            p.satelites.push_back(mercurioMoon);
+        }
+        if (p.nombre == "Venus") {
+            p.satelites.push_back(venusMoon);
+        }
         if (p.nombre == "Tierra") {
             p.satelites.push_back(luna);
         }
@@ -515,6 +616,32 @@ int main(int argc, char** argv) {
             p.satelites.push_back(fobos);
             p.satelites.push_back(deimos);
         }
+        if (p.nombre == "Jupiter") {
+            p.satelites.push_back(jupiterMoon);
+        }
+        if (p.nombre == "Saturno") {
+            for (int i = 0; i < 8; ++i) {
+                Satelite s = saturnoMoon;
+                s.distancia += i * 0.5f;
+                s.velocidad += i * 0.03f;
+                p.satelites.push_back(s);
+            }
+        }
+        if (p.nombre == "Urano") {
+            p.satelites.push_back(uranoMoon);
+        }
+        if (p.nombre == "Neptuno") {
+            p.satelites.push_back(neptunoMoon);
+        }
+    }
+
+    // === GENERAR CINTURON DE ASTEROIDES ===
+    for (int i = 0; i < 1600; ++i) {
+        float distancia = 60.0f + static_cast<float>(rand()) / RAND_MAX * (95.0f - 60.0f);
+        float angulo = static_cast<float>(rand()) / RAND_MAX * 360.0f;
+        float velocidad = 0.1f + static_cast<float>(rand()) / RAND_MAX * 0.2f;
+        float tam = 0.15f + static_cast<float>(rand()) / RAND_MAX * 0.15f;
+        asteroides.push_back({ distancia, angulo, velocidad, tam });
     }
 
     updateCenter();
